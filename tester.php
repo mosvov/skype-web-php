@@ -4,8 +4,8 @@ require 'Skype4PHP/Skype.php';
 
 use Skype4PHP\Skype;
 
-$username = 'cyberpunk239';
-$password = 'pft,fkbvtyz239';
+$username = '';
+$password = '';
 
 $skype = new Skype();
 $skype->login($username, $password);
