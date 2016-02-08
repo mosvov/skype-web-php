@@ -55,6 +55,11 @@ class Transport {
 
         $stack = new \GuzzleHttp\HandlerStack();
         $stack->setHandler(new \GuzzleHttp\Handler\CurlHandler());
+
+        /**
+         * Здесь ставим ловушку, чтобы с помощью редиректов
+         *   определить адрес сервера, который сможет отсылать сообщения
+         */
         $stack->push(\GuzzleHttp\Middleware::mapResponse(function (\Psr\Http\Message\ResponseInterface $response) {
             $code = $response->getStatusCode();
             if (($code >= 301 && $code <= 303) || $code == 307 || $code == 308) {
@@ -66,6 +71,11 @@ class Transport {
             }
             return $response;
         }));
+
+        /**
+         * Ловушка для отлова хедера Set-RegistrationToken
+         * Тоже нужен для отправки сообщений
+         */
         $stack->push(\GuzzleHttp\Middleware::mapResponse(function (\Psr\Http\Message\ResponseInterface $response) {
             $h = $response->getHeader("Set-RegistrationToken");
             if (count($h) > 0) {
@@ -81,6 +91,12 @@ class Transport {
 
     }
 
+    /**
+     * Выполнить реквест по имени endpoint из статического массива
+     * @param string $endpoint
+     * @param array $params
+     * @return \Psr\Http\Message\ResponseInterface
+     */
     private function request($endpoint, $params=[]) {
         $Endpoint = static::$Endpoints[$endpoint];
         if (array_key_exists("format", $params)) {
@@ -97,6 +113,13 @@ class Transport {
         return $res;
     }
 
+    /**
+     * Выполнить реквест по имени endpoint из статического массива
+     * и вернуть DOMDocument построенный на body ответа
+     * @param string $endpoint
+     * @param array $params
+     * @return DOMDocument
+     */
     private function requestDOM($endpoint, $params=[]) {
         libxml_use_internal_errors(true);
         $doc = new DOMDocument();
@@ -107,10 +130,24 @@ class Transport {
         return $doc;
     }
 
+    /**
+     * Выполнить реквест по имени endpoint из статического массива
+     * и преобразовать JSON-ответ в array
+     * @param string $endpoint
+     * @param array $params
+     * @return array
+     */
     private function requestJSON($endpoint, $params=[]) {
         return json_decode($this->request($endpoint, $params)->getBody(), true);
     }
 
+    /**
+     * Запрос для входа.
+     * @param string $username
+     * @param string $password
+     * @param null $captchaData Можем передать массив с решением капчи
+     * @return DOMDocument
+     */
     private function postToLogin($username, $password, $captchaData=null) {
         $doc = $this->requestDOM('login_get');
         $loginForm = $doc->getElementById('loginForm');
@@ -143,6 +180,16 @@ class Transport {
         ]);
     }
 
+    /**
+     * Выполняем запрос для входа, ловим из ответа skypeToken
+     * Проверяем не спросили ли у нас капчу и не возникло ли другой ошибки
+     * Если всё плохо, то бросим исключение, иначе вернём true
+     * @param $username
+     * @param $password
+     * @param null $captchaData
+     * @return bool
+     * @throws Exception
+     */
     public function login($username, $password, $captchaData=null) {
         $this->username = $username;
 
@@ -169,6 +216,7 @@ class Transport {
 
         $captcha = $doc->getElementById("captchaContainer");
         if ($captcha) {
+            // Вот здесь определяем данные капчи
             $scripts = $captcha->getElementsByTagName('script');
             if ($scripts->length > 0) {
                 $script = "";
@@ -179,6 +227,7 @@ class Transport {
                 $url = $matches[1][0];
                 $rawjs = $this->Client->get($url)->getBody();
                 $captchaData = $this->processCaptcha($rawjs);
+                // Если решение получено, пытаемся ещё раз залогиниться, но уже с решением капчи
                 if ($this->login($username, $password, $captchaData)) {
                     return true;
                 } else {
@@ -197,11 +246,21 @@ class Transport {
         throw new Exception("Unable to find skype token");
     }
 
+    /**
+     * Выход
+     * @return bool
+     */
     public function logout() {
         $this->request('logout');
         return true;
     }
 
+    /**
+     * Заглушка для ввода капчи. Сейчас просто выводит в консоли урл картинки
+     * и ждёт ввода с клавиатуры решения
+     * @param $script
+     * @return array
+     */
     private function processCaptcha($script) {
         preg_match_all("/imageurl:'([^']*)'/", $script, $matches);
         $imgurl = $matches[1][0];
@@ -217,6 +276,12 @@ class Transport {
         ];
     }
 
+    /**
+     * Отправляем текстовое сообщение юзеру
+     * @param $username
+     * @param $message
+     * @return bool
+     */
     public function send($username, $message) {
         $ms = microtime();
         $response = $this->requestJSON('send_message', [
@@ -231,6 +296,10 @@ class Transport {
         return array_key_exists("OriginalArrivalTime", $response);
     }
 
+    /**
+     * Скачиваем список всех контактов и информацию о них для залогиненного юзера
+     * @return null
+     */
     public function loadAllContacts() {
         $result = $this->requestJSON('contacts', [
             'format' => [$this->username],
@@ -241,6 +310,11 @@ class Transport {
         return null;
     }
 
+    /**
+     * Скачиваем информацию о конкретном контакте, только если его нет в кеше
+     * @param $username
+     * @return array
+     */
     public function loadContact($username) {
         $result = $this->requestJSON('contact_info', [
             'form_params' => [
