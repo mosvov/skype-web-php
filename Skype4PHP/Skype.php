@@ -1,9 +1,8 @@
 <?php
 
-require 'Transport.php';
-require 'Contact.php';
+namespace Skype4PHP;
 
-class Skype2 {
+class Skype {
     private $transport;
     private $username;
     private $contacts = [];
@@ -20,6 +19,11 @@ class Skype2 {
         return $this;
     }
 
+    public function logout() {
+        $this->transport->logout();
+        return $this;
+    }
+
     public function getContact($username) {
         if (array_key_exists($username, $this->contacts)) {
             return $this->contacts[$username];
@@ -33,9 +37,7 @@ class Skype2 {
         }
         $result = [];
         foreach ($usernames as $name) {
-            if (array_key_exists($name, $this->contacts)) {
-                $result[$name] = $this->contacts[$name];
-            }
+            $result[$name] = $this->getContact($name);
         }
         return $result;
     }
@@ -59,8 +61,7 @@ class Skype2 {
         if (!$username) {
             $this->contacts = [];
             foreach ($this->transport->loadAllContacts() as $item) {
-                print_r($item);
-//                $this->contacts[$item['username']] = new Contact($item);
+                $this->contacts[$item['id']] = new Contact($item);
             }
             return $this->contacts;
         }

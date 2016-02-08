@@ -1,8 +1,11 @@
 <?php
 
-use GuzzleHttp\Psr7\Request;
+namespace Skype4PHP;
 
-require 'vendor/autoload.php';
+use Exception;
+use DOMDocument;
+use DOMXPath;
+use GuzzleHttp\Client;
 
 class Transport {
 
@@ -33,7 +36,10 @@ class Transport {
 
                 'send_message' => (new Endpoint('POST',
                     'https://%sclient-s.gateway.messenger.live.com/v1/users/ME/conversations/%s/messages'))
-                    ->needRegToken()
+                    ->needRegToken(),
+
+                'logout'       => (new Endpoint('Get',
+                    'https://login.skype.com/logout?client_id=578134&redirect_uri=https%3A%2F%2Fweb.skype.com&intsrc=client-_-webapp-_-production-_-go-signin')),
             ];
         }
     }
@@ -60,8 +66,15 @@ class Transport {
             }
             return $response;
         }));
+        $stack->push(\GuzzleHttp\Middleware::mapResponse(function (\Psr\Http\Message\ResponseInterface $response) {
+            $h = $response->getHeader("Set-RegistrationToken");
+            if (count($h) > 0) {
+                $this->regToken = trim(explode(';', $h[0])[0]);
+            }
+            return $response;
+        }));
 
-        $this->Client = new GuzzleHttp\Client([
+        $this->Client = new Client([
             'handler' => $stack,
             'cookies' => true,
         ]);
@@ -81,10 +94,6 @@ class Transport {
         ]);
 
         $res = $this->Client->send($Request, $params);
-        if ($endpoint === 'endpoint') {
-            echo PHP_EOL. $endpoint . PHP_EOL . $res->getBody() . PHP_EOL . PHP_EOL;
-            print_r($Request->getHeaders());
-        }
         return $res;
     }
 
@@ -160,13 +169,22 @@ class Transport {
 
         $captcha = $doc->getElementById("captchaContainer");
         if ($captcha) {
-            $url = null;
             $scripts = $captcha->getElementsByTagName('script');
-            $s = "Here 1";
-            foreach ($scripts as $script) {
-                $s = $s . PHP_EOL . $script->textContent;
+            if ($scripts->length > 0) {
+                $script = "";
+                foreach ($scripts as $item) {
+                    $script .= $item->textContent;
+                }
+                preg_match_all("/skypeHipUrl = \"(.*)\"/", $script, $matches);
+                $url = $matches[1][0];
+                $rawjs = $this->Client->get($url)->getBody();
+                $captchaData = $this->processCaptcha($rawjs);
+                if ($this->login($username, $password, $captchaData)) {
+                    return true;
+                } else {
+                    throw new Exception("Captcha error: $url");
+                }
             }
-            throw new Exception($s);
         }
         $errors = $xpath->query('//*[contains(concat(" ", normalize-space(@class), " "), " message_error ")]');
         if ($errors->length) {
@@ -179,92 +197,57 @@ class Transport {
         throw new Exception("Unable to find skype token");
     }
 
-    public function send($username, $message) {
-        $ms = microtime();
-        $this->request('send_message', [
-            'form_params' => [
-                'content' => $message,
-                'messageType' => 'RichText',
-                'contentType' => 'text',
-                'clientmessageid' => "$ms",
-            ],
-            'format' => [$this->cloud, $username]
-        ]);
+    public function logout() {
+        $this->request('logout');
         return true;
     }
 
+    private function processCaptcha($script) {
+        preg_match_all("/imageurl:'([^']*)'/", $script, $matches);
+        $imgurl = $matches[1][0];
+        preg_match_all("/hid=([^&]*)/", $imgurl, $matches);
+        $hid = $matches[1][0];
+        preg_match_all("/fid=([^&]*)/", $imgurl, $matches);
+        $fid = $matches[1][0];
+        print_r(PHP_EOL . "url: " . $imgurl . PHP_EOL);
+        return [
+            'hip_solution' => trim(readline()),
+            'hip_token'    => $hid,
+            'fid'          => $fid,
+        ];
+    }
+
+    public function send($username, $message) {
+        $ms = microtime();
+        $response = $this->requestJSON('send_message', [
+            'json' => [
+                'content' => $message,
+                'messagetype' => 'RichText',
+                'contenttype' => 'text',
+                'clientmessageid' => "$ms",
+            ],
+            'format' => [$this->cloud, "8:$username"]
+        ]);
+        return array_key_exists("OriginalArrivalTime", $response);
+    }
+
     public function loadAllContacts() {
-        return $this->requestJSON('contacts', [
+        $result = $this->requestJSON('contacts', [
             'format' => [$this->username],
         ]);
+        if (array_key_exists('contacts', $result)) {
+            return $result['contacts'];
+        }
+        return null;
     }
 
     public function loadContact($username) {
-        $Response = $this->requestJSON('contact_info', [
+        $result = $this->requestJSON('contact_info', [
             'form_params' => [
                 'contacts' => [$username]
             ]
         ]);
-        if ($Response['Message']) {
-            throw new Exception($Response['Message']);
-        }
-        return $Response;
-    }
-
-}
-
-class Endpoint {
-    private $method;
-    private $uri;
-    private $params;
-
-    public function __construct($method, $uri, array $params=[]) {
-        $this->method = $method;
-        $this->uri = $uri;
-        $this->params = $params;
-        if (!array_key_exists('headers', $this->params)) {
-            $this->params['headers'] = [];
-        }
-    }
-
-    private $requiresSkypeToken = false;
-    private $requiresRegToken = false;
-
-    public function needSkypeToken() {
-        $this->requiresSkypeToken = true;
-        return $this;
-    }
-    public function skypeToken() {
-        return $this->requiresSkypeToken;
-    }
-
-    public function needRegToken() {
-        $this->requiresRegToken = true;
-        return $this;
-    }
-    public function regToken() {
-        return $this->requiresRegToken;
-    }
-
-    public function format($args) {
-        return new Endpoint($this->method, vsprintf($this->uri, $args));
-    }
-
-    public function getRequest($args=[]) {
-        $headers = [];
-        if ($this->requiresSkypeToken) {
-            $headers['X-SkypeToken'] = $args['skypeToken'];
-        }
-        if ($this->requiresRegToken) {
-            $headers['RegistrationToken'] = $args['regToken'];
-        }
-        $opts['headers'] = $headers;
-        $req = new Request($this->method, $this->uri, $opts);
-        echo "This is: " . PHP_EOL;
-        print_r($opts['headers']);
-        echo PHP_EOL;
-        print_r($req->getHeaders());
-        return $req;
+        return $result;
     }
 
 }

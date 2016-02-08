@@ -1,5 +1,10 @@
 <?php
 
+namespace Skype4PHP;
+
+use Exception;
+use DOMDocument;
+
 class Curl {
 
     private $curl;
