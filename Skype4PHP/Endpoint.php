@@ -65,15 +65,14 @@ class Endpoint {
      * @return Request|\Psr\Http\Message\MessageInterface
      */
     public function getRequest($args=[]) {
-        $req = new Request($this->method, $this->uri, $this->params);
+        $Request = new Request($this->method, $this->uri, $this->params);
         if ($this->requires['skypeToken']) {
-            $req = $req->withHeader('X-SkypeToken', $args['skypeToken']);
+            $Request = $Request->withHeader('X-SkypeToken', $args['skypeToken']);
         }
         if ($this->requires['regToken']) {
-            $req = $req->withHeader('RegistrationToken', $args['regToken']);
+            $Request = $Request->withHeader('RegistrationToken', $args['regToken']);
         }
-        echo $req->getUri() . PHP_EOL;
-        return $req;
+        return $Request;
     }
 
 }

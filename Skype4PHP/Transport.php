@@ -48,44 +48,44 @@ class Transport {
     private $skypeToken;
     private $regToken;
     private $cloud;
-
     private $Client;
+
     public function __construct() {
         static::init();
 
-        $stack = new \GuzzleHttp\HandlerStack();
-        $stack->setHandler(new \GuzzleHttp\Handler\CurlHandler());
+        $Stack = new \GuzzleHttp\HandlerStack();
+        $Stack->setHandler(new \GuzzleHttp\Handler\CurlHandler());
 
         /**
          * Здесь ставим ловушку, чтобы с помощью редиректов
          *   определить адрес сервера, который сможет отсылать сообщения
          */
-        $stack->push(\GuzzleHttp\Middleware::mapResponse(function (\Psr\Http\Message\ResponseInterface $response) {
-            $code = $response->getStatusCode();
+        $Stack->push(\GuzzleHttp\Middleware::mapResponse(function (\Psr\Http\Message\ResponseInterface $Response) {
+            $code = $Response->getStatusCode();
             if (($code >= 301 && $code <= 303) || $code == 307 || $code == 308) {
-                $location = $response->getHeader('Location');
+                $location = $Response->getHeader('Location');
                 preg_match('/https?://([^-]*-)client-s/', $location, $matches);
                 if (array_key_exists(1, $matches)) {
                     $this->cloud = $matches[1];
                 }
             }
-            return $response;
+            return $Response;
         }));
 
         /**
          * Ловушка для отлова хедера Set-RegistrationToken
          * Тоже нужен для отправки сообщений
          */
-        $stack->push(\GuzzleHttp\Middleware::mapResponse(function (\Psr\Http\Message\ResponseInterface $response) {
-            $h = $response->getHeader("Set-RegistrationToken");
-            if (count($h) > 0) {
-                $this->regToken = trim(explode(';', $h[0])[0]);
+        $Stack->push(\GuzzleHttp\Middleware::mapResponse(function (\Psr\Http\Message\ResponseInterface $Response) {
+            $header = $Response->getHeader("Set-RegistrationToken");
+            if (count($header) > 0) {
+                $this->regToken = trim(explode(';', $header[0])[0]);
             }
-            return $response;
+            return $Response;
         }));
 
         $this->Client = new Client([
-            'handler' => $stack,
+            'handler' => $Stack,
             'cookies' => true,
         ]);
 
@@ -93,12 +93,13 @@ class Transport {
 
     /**
      * Выполнить реквест по имени endpoint из статического массива
-     * @param string $endpoint
+     *
+     * @param string $endpointName
      * @param array $params
      * @return \Psr\Http\Message\ResponseInterface
      */
-    private function request($endpoint, $params=[]) {
-        $Endpoint = static::$Endpoints[$endpoint];
+    private function request($endpointName, $params=[]) {
+        $Endpoint = static::$Endpoints[$endpointName];
         if (array_key_exists("format", $params)) {
             $format = $params['format'];
             unset($params['format']);
@@ -116,15 +117,16 @@ class Transport {
     /**
      * Выполнить реквест по имени endpoint из статического массива
      * и вернуть DOMDocument построенный на body ответа
-     * @param string $endpoint
+     *
+     * @param string $endpointName
      * @param array $params
      * @return DOMDocument
      */
-    private function requestDOM($endpoint, $params=[]) {
+    private function requestDOM($endpointName, $params=[]) {
         libxml_use_internal_errors(true);
         $doc = new DOMDocument();
         $doc->recover = true;
-        $body = $this->request($endpoint, $params)->getBody();
+        $body = $this->request($endpointName, $params)->getBody();
         $doc->loadHTML((string) $body);
         libxml_use_internal_errors(false);
         return $doc;
@@ -133,12 +135,12 @@ class Transport {
     /**
      * Выполнить реквест по имени endpoint из статического массива
      * и преобразовать JSON-ответ в array
-     * @param string $endpoint
+     * @param string $endpointName
      * @param array $params
      * @return array
      */
-    private function requestJSON($endpoint, $params=[]) {
-        return json_decode($this->request($endpoint, $params)->getBody(), true);
+    private function requestJSON($endpointName, $params=[]) {
+        return json_decode($this->request($endpointName, $params)->getBody(), true);
     }
 
     /**
@@ -149,34 +151,34 @@ class Transport {
      * @return DOMDocument
      */
     private function postToLogin($username, $password, $captchaData=null) {
-        $doc = $this->requestDOM('login_get');
-        $loginForm = $doc->getElementById('loginForm');
-        $inputs = $loginForm->getElementsByTagName('input');
-        $data = [];
+        $Doc = $this->requestDOM('login_get');
+        $LoginForm = $Doc->getElementById('loginForm');
+        $inputs = $LoginForm->getElementsByTagName('input');
+        $formData = [];
         foreach ($inputs as $input) {
-            $data[$input->getAttribute('name')] = $input->getAttribute('value');
+            $formData[$input->getAttribute('name')] = $input->getAttribute('value');
         }
         $now = time();
-        $data['timezone_field'] = str_replace(':', '|', date('P', $now));
-        $data['username'] = $username;
-        $data['password'] = $password;
-        $data['js_time'] = $now;
+        $formData['timezone_field'] = str_replace(':', '|', date('P', $now));
+        $formData['username'] = $username;
+        $formData['password'] = $password;
+        $formData['js_time'] = $now;
         if ($captchaData) {
-            $data['hip_solution'] = $captchaData['hip_solution'];
-            $data['hip_token'] = $captchaData['hip_token'];
-            $data['fid'] = $captchaData['fid'];
-            $data['hip_type'] = 'visual';
-            $data['captcha_provider'] = 'Hip';
+            $formData['hip_solution'] = $captchaData['hip_solution'];
+            $formData['hip_token'] = $captchaData['hip_token'];
+            $formData['fid'] = $captchaData['fid'];
+            $formData['hip_type'] = 'visual';
+            $formData['captcha_provider'] = 'Hip';
         } else {
-            unset($data['hip_solution']);
-            unset($data['hip_token']);
-            unset($data['fid']);
-            unset($data['hip_type']);
-            unset($data['captcha_provider']);
+            unset($formData['hip_solution']);
+            unset($formData['hip_token']);
+            unset($formData['fid']);
+            unset($formData['hip_type']);
+            unset($formData['captcha_provider']);
         }
 
         return $this->requestDOM('login_post', [
-            'form_params' => $data
+            'form_params' => $formData
         ]);
     }
 
@@ -193,11 +195,11 @@ class Transport {
     public function login($username, $password, $captchaData=null) {
         $this->username = $username;
 
-        $doc = $this->postToLogin($username, $password, $captchaData);
-        $xpath = new DOMXPath($doc);
-        $inputs = $xpath->query("//input[@name='skypetoken']");
-        if ($inputs->length) {
-            $this->skypeToken = $inputs->item(0)->attributes->getNamedItem('value')->nodeValue;
+        $Doc = $this->postToLogin($username, $password, $captchaData);
+        $XPath = new DOMXPath($Doc);
+        $Inputs = $XPath->query("//input[@name='skypetoken']");
+        if ($Inputs->length) {
+            $this->skypeToken = $Inputs->item(0)->attributes->getNamedItem('value')->nodeValue;
             $this->request('asm', [
                 'form_params' => [
                     'skypetoken' => $this->skypeToken,
@@ -214,13 +216,13 @@ class Transport {
             return true;
         }
 
-        $captcha = $doc->getElementById("captchaContainer");
-        if ($captcha) {
+        $CaptchaContainer = $Doc->getElementById("captchaContainer");
+        if ($CaptchaContainer) {
             // Вот здесь определяем данные капчи
-            $scripts = $captcha->getElementsByTagName('script');
-            if ($scripts->length > 0) {
+            $Scripts = $CaptchaContainer->getElementsByTagName('script');
+            if ($Scripts->length > 0) {
                 $script = "";
-                foreach ($scripts as $item) {
+                foreach ($Scripts as $item) {
                     $script .= $item->textContent;
                 }
                 preg_match_all("/skypeHipUrl = \"(.*)\"/", $script, $matches);
@@ -235,13 +237,13 @@ class Transport {
                 }
             }
         }
-        $errors = $xpath->query('//*[contains(concat(" ", normalize-space(@class), " "), " message_error ")]');
-        if ($errors->length) {
-            $s = '';
-            foreach ($errors as $error) {
-                $s = $s . PHP_EOL . $error->textContent;
+        $Errors = $XPath->query('//*[contains(concat(" ", normalize-space(@class), " "), " message_error ")]');
+        if ($Errors->length) {
+            $errorMsg = '';
+            foreach ($Errors as $Error) {
+                $errorMsg = $errorMsg . PHP_EOL . $Error->textContent;
             }
-            throw new Exception($s);
+            throw new Exception($errorMsg);
         }
         throw new Exception("Unable to find skype token");
     }
@@ -284,7 +286,7 @@ class Transport {
      */
     public function send($username, $message) {
         $ms = microtime();
-        $response = $this->requestJSON('send_message', [
+        $Response = $this->requestJSON('send_message', [
             'json' => [
                 'content' => $message,
                 'messagetype' => 'RichText',
@@ -293,7 +295,7 @@ class Transport {
             ],
             'format' => [$this->cloud, "8:$username"]
         ]);
-        return array_key_exists("OriginalArrivalTime", $response);
+        return array_key_exists("OriginalArrivalTime", $Response);
     }
 
     /**
@@ -301,11 +303,11 @@ class Transport {
      * @return null
      */
     public function loadAllContacts() {
-        $result = $this->requestJSON('contacts', [
+        $Result = $this->requestJSON('contacts', [
             'format' => [$this->username],
         ]);
-        if (array_key_exists('contacts', $result)) {
-            return $result['contacts'];
+        if (array_key_exists('contacts', $Result)) {
+            return $Result['contacts'];
         }
         return null;
     }
@@ -316,12 +318,12 @@ class Transport {
      * @return array
      */
     public function loadContact($username) {
-        $result = $this->requestJSON('contact_info', [
+        $Result = $this->requestJSON('contact_info', [
             'form_params' => [
                 'contacts' => [$username]
             ]
         ]);
-        return $result;
+        return $Result;
     }
 
 }

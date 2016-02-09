@@ -6,7 +6,7 @@ class Contact {
 
     private $raw;
 
-    public function __construct($raw) {
+    public function __construct(array $raw) {
         $this->raw = $raw;
     }
 
