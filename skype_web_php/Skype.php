@@ -71,9 +71,9 @@ class Skype {
     }
 
 
-    public function onMessage($callback, $username){
+    public function onMessage($callback){
         while (true){
-            call_user_func($callback, $this->Transport->getNewMessages($username));
+            call_user_func($callback, $this->Transport->getNewMessages($this->username));
             sleep(1);
         }
     }

@@ -13,6 +13,7 @@ class Message {
     public $imdisplayname;
     public $conversationLink;
     public $content;
+    public $from;
 
     public function __construct(array $array) {
         if (count($array) == 0){
@@ -39,6 +40,11 @@ class Message {
             if (isset($array['resource'][$attrName])){
                 $this->{$attrName} = $array['resource'][$attrName];
             }
+        }
+
+        if (isset($array['resource']['from'])){//get user from
+            $from = $array['resource']['from'];
+            $this->from = substr($from, strpos($from, "8:") + 2);
         }
     }
 
