@@ -1,5 +1,6 @@
 {
     "name": "mosvov/skype-web-php",
+    "version": "1.0.0",
     "description": "PHP client for Skype Web API",
     "license": "MIT",
     "authors": [
