@@ -1,6 +1,6 @@
 {
     "name": "mosvov/skype-web-php",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "minimum-stability": "dev",
     "description": "PHP client for Skype Web API",
     "license": "MIT",
@@ -12,5 +12,8 @@
     ],
     "require": {
         "guzzlehttp/guzzle": "^6.1"
+    },
+    "psr-4": {
+        "skype_web_php\\": "skype_web_php/"
     }
 }
