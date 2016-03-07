@@ -1,6 +1,6 @@
 <?php
 
-namespace Skype4PHP;
+namespace skype_web_php;
 
 use Exception;
 use DOMDocument;

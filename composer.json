@@ -1,4 +1,13 @@
 {
+    "name": "mosvov/skype-web-php",
+    "description": "PHP client for Skype Web API",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "volodymyr.m",
+            "email": "mosvov@gmail.com"
+        }
+    ],
     "require": {
         "guzzlehttp/guzzle": "^6.1"
     }
