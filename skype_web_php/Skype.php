@@ -70,4 +70,11 @@ class Skype {
         return $this->Contacts[$username];
     }
 
+
+    public function onMessage($callback, $username){
+        while (true){
+            call_user_func($callback, $this->Transport->getNewMessages($username));
+            sleep(1);
+        }
+    }
 }

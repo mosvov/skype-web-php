@@ -6,7 +6,8 @@ use Exception;
 use DOMDocument;
 use DOMXPath;
 use GuzzleHttp\Client;
-
+use GuzzleHttp\Cookie\FileCookieJar;
+use GuzzleHttp\Promise;
 class Transport {
 
     private static $Endpoints = null;
@@ -38,6 +39,14 @@ class Transport {
                     'https://%sclient-s.gateway.messenger.live.com/v1/users/ME/conversations/%s/messages'))
                     ->needRegToken(),
 
+                'read_message' => (new Endpoint('POST',
+                    'https://%sclient-s.gateway.messenger.live.com/v1/users/ME/endpoints/SELF/subscriptions/0/poll'))
+                    ->needRegToken(),
+
+                'subscriptions' => (new Endpoint('POST',
+                    'https://client-s.gateway.messenger.live.com/v1/users/ME/endpoints/SELF/subscriptions'))
+                    ->needRegToken(),
+
                 'logout'       => (new Endpoint('Get',
                     'https://login.skype.com/logout?client_id=578134&redirect_uri=https%3A%2F%2Fweb.skype.com&intsrc=client-_-webapp-_-production-_-go-signin')),
             ];
@@ -48,6 +57,10 @@ class Transport {
     private $skypeToken;
     private $regToken;
     private $cloud;
+
+    /**
+     * @var Client
+     */
     private $Client;
 
     public function __construct() {
@@ -84,9 +97,11 @@ class Transport {
             return $Response;
         }));
 
+        $cookieJar = new FileCookieJar('cookie.txt', true);
+
         $this->Client = new Client([
             'handler' => $Stack,
-            'cookies' => true,
+            'cookies' => $cookieJar
         ]);
 
     }
@@ -213,6 +228,8 @@ class Transport {
                     'skypetoken' => $this->skypeToken
                 ]
             ]);
+
+            $this->subscribeToResources();
             return true;
         }
 
@@ -324,6 +341,31 @@ class Transport {
             ]
         ]);
         return $Result;
+    }
+
+
+    public function getNewMessages($username){
+        $Response = $this->requestJSON('read_message', [
+            'format' => [$this->cloud, "8:$username"]
+        ]);
+
+        return isset($Response['eventMessages']) ? new Message($Response['eventMessages']) : null;
+    }
+
+    private function subscribeToResources()
+    {
+        $response = $this->requestJSON('subscriptions', [
+            'json' => [
+                'interestedResources' => [
+                    '/v1/threads/ALL',
+                    '/v1/users/ME/contacts/ALL',
+                    '/v1/users/ME/conversations/ALL/messages',
+                    '/v1/users/ME/conversations/ALL/properties',
+                ],
+                'template' => 'raw',
+                'channelType' => 'httpLongPoll'
+            ]
+        ]);
     }
 
 }
