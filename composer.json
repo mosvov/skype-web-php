@@ -13,7 +13,9 @@
     "require": {
         "guzzlehttp/guzzle": "^6.1"
     },
-    "psr-4": {
-        "skype_web_php\\": "skype_web_php/"
+    "autoload": {
+        "psr-4": {
+            "skype_web_php\\": "skype_web_php/"
+        }
     }
 }
