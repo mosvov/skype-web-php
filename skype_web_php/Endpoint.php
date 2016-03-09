@@ -1,31 +1,45 @@
 <?php
-
 namespace skype_web_php;
 
 use GuzzleHttp\Psr7\Request;
 
 /**
- * Класс для запросов на апи скайпа
  * Class Endpoint
- * @package Skype4PHP
+ *
+ * @package skype_web_php
  */
-class Endpoint {
-    /** Метод запроса */
+class Endpoint
+{
+
+    /**
+     * @var
+     */
     private $method;
-
-    /** URI */
+    /**
+     * @var
+     */
     private $uri;
-
-    /** Доп параметры */
+    /**
+     * @var array
+     */
     private $params;
 
-    /** Необходимы ли для этого запроса соответствующие токены */
+    /**
+     * @var array
+     */
     private $requires = [
         'skypeToken' => false,
-        'regToken'   => false,
+        'regToken' => false,
     ];
 
-    public function __construct($method, $uri, array $params=[], array $requires=[]) {
+    /**
+     * @param $method
+     * @param $uri
+     * @param array $params
+     * @param array $requires
+     */
+    public function __construct($method, $uri, array $params = [], array $requires = [])
+    {
         $this->method = $method;
         $this->uri = $uri;
         $this->params = $params;
@@ -35,36 +49,57 @@ class Endpoint {
         $this->requires = array_merge($this->requires, $requires);
     }
 
-    public function needSkypeToken() {
+    /**
+     * @return $this
+     */
+    public function needSkypeToken()
+    {
         $this->requires['skypeToken'] = true;
+
         return $this;
     }
-    public function skypeToken() {
+
+    /**
+     * @return mixed
+     */
+    public function skypeToken()
+    {
         return $this->requires['skypeToken'];
     }
 
-    public function needRegToken() {
+    /**
+     * @return $this
+     */
+    public function needRegToken()
+    {
         $this->requires['regToken'] = true;
+
         return $this;
     }
-    public function regToken() {
+
+    /**
+     * @return mixed
+     */
+    public function regToken()
+    {
         return $this->requires['regToken'];
     }
 
     /**
-     * Есть запросы с шаблонным uri, который нужно переформатировать перед выполнением
-     * Этот метод создаст новый Endpoint подставив в текущий запрос переданные параметры для uri
+     * @param $args
+     * @return Endpoint
      */
-    public function format($args) {
+    public function format($args)
+    {
         return new Endpoint($this->method, vsprintf($this->uri, $args), $this->params, $this->requires);
     }
 
     /**
-     * Получаем Guzzle-овский реквест
      * @param array $args
      * @return Request|\Psr\Http\Message\MessageInterface
      */
-    public function getRequest($args=[]) {
+    public function getRequest($args = [])
+    {
         $Request = new Request($this->method, $this->uri, $this->params);
         if ($this->requires['skypeToken']) {
             $Request = $Request->withHeader('X-SkypeToken', $args['skypeToken']);
@@ -72,7 +107,7 @@ class Endpoint {
         if ($this->requires['regToken']) {
             $Request = $Request->withHeader('RegistrationToken', $args['regToken']);
         }
+
         return $Request;
     }
-
 }

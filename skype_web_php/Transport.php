@@ -7,56 +7,71 @@ use DOMDocument;
 use DOMXPath;
 use GuzzleHttp\Client;
 use GuzzleHttp\Cookie\FileCookieJar;
+use GuzzleHttp\Handler\CurlHandler;
+use GuzzleHttp\HandlerStack;
+use GuzzleHttp\Middleware;
 use GuzzleHttp\Promise;
+use Psr\Http\Message\ResponseInterface;
+
 class Transport {
-
-    private static $Endpoints = null;
-    private static function init() {
-        if (!static::$Endpoints) {
-            static::$Endpoints = [
-                'login_get'    => new Endpoint('GET',
-                    'https://login.skype.com/login?client_id=578134&redirect_uri=https%3A%2F%2Fweb.skype.com'),
-
-                'login_post'   => new Endpoint('POST',
-                    'https://login.skype.com/login?client_id=578134&redirect_uri=https%3A%2F%2Fweb.skype.com'),
-
-                'asm'          => new Endpoint('POST',
-                    'https://api.asm.skype.com/v1/skypetokenauth'),
-
-                'endpoint'     => (new Endpoint('POST',
-                    'https://client-s.gateway.messenger.live.com/v1/users/ME/endpoints'))
-                    ->needSkypeToken(),
-
-                'contacts'     => (new Endpoint('GET',
-                    'https://contacts.skype.com/contacts/v1/users/%s/contacts?filter=type%%20eq%%20%%27skype%%27%%20or%%20type%%20eq%%20%%27msn%%27%%20or%%20type%%20eq%%20%%27pstn%%27%%20or%%20type%%20eq%%20%%27agent%%27'))
-                    ->needSkypeToken(),
-
-                'contact_info' => (new Endpoint('POST',
-                    "https://api.skype.com/users/self/contacts/profiles"))
-                    ->needSkypeToken(),
-
-                'send_message' => (new Endpoint('POST',
-                    'https://%sclient-s.gateway.messenger.live.com/v1/users/ME/conversations/%s/messages'))
-                    ->needRegToken(),
-
-                'read_message' => (new Endpoint('POST',
-                    'https://%sclient-s.gateway.messenger.live.com/v1/users/ME/endpoints/SELF/subscriptions/0/poll'))
-                    ->needRegToken(),
-
-                'subscriptions' => (new Endpoint('POST',
-                    'https://client-s.gateway.messenger.live.com/v1/users/ME/endpoints/SELF/subscriptions'))
-                    ->needRegToken(),
-
-                'logout'       => (new Endpoint('Get',
-                    'https://login.skype.com/logout?client_id=578134&redirect_uri=https%3A%2F%2Fweb.skype.com&intsrc=client-_-webapp-_-production-_-go-signin')),
-            ];
-        }
-    }
 
     private $username;
     private $skypeToken;
     private $regToken;
     private $cloud;
+
+    /**
+     * @var Endpoint []
+     */
+    private static $Endpoints = null;
+
+    private static function init() {
+        if (static::$Endpoints) {
+            return;
+        }
+
+        static::$Endpoints = [
+            'login_get'    => new Endpoint('GET',
+                'https://login.skype.com/login?client_id=578134&redirect_uri=https%3A%2F%2Fweb.skype.com'),
+
+            'login_post'   => new Endpoint('POST',
+                'https://login.skype.com/login?client_id=578134&redirect_uri=https%3A%2F%2Fweb.skype.com'),
+
+            'asm'          => new Endpoint('POST',
+                'https://api.asm.skype.com/v1/skypetokenauth'),
+
+            'endpoint'     => (new Endpoint('POST',
+                'https://client-s.gateway.messenger.live.com/v1/users/ME/endpoints'))
+                ->needSkypeToken(),
+
+            'contacts'     => (new Endpoint('GET',
+                'https://contacts.skype.com/contacts/v1/users/%s/contacts'))
+                ->needSkypeToken(),
+
+            'contact_info' => (new Endpoint('POST',
+                "https://api.skype.com/users/self/contacts/profiles"))
+                ->needSkypeToken(),
+
+            'self_info' => (new Endpoint('GET',
+                "https://api.skype.com/users/self/displayname"))
+                ->needSkypeToken(),
+
+            'send_message' => (new Endpoint('POST',
+                'https://%sclient-s.gateway.messenger.live.com/v1/users/ME/conversations/%s/messages'))
+                ->needRegToken(),
+
+            'read_message' => (new Endpoint('POST',
+                'https://%sclient-s.gateway.messenger.live.com/v1/users/ME/endpoints/SELF/subscriptions/0/poll'))
+                ->needRegToken(),
+
+            'subscriptions' => (new Endpoint('POST',
+                'https://client-s.gateway.messenger.live.com/v1/users/ME/endpoints/SELF/subscriptions'))
+                ->needRegToken(),
+
+            'logout'       => (new Endpoint('Get',
+                'https://login.skype.com/logout?client_id=578134&redirect_uri=https%3A%2F%2Fweb.skype.com&intsrc=client-_-webapp-_-production-_-go-signin')),
+        ];
+    }
 
     /**
      * @var Client
@@ -66,14 +81,14 @@ class Transport {
     public function __construct() {
         static::init();
 
-        $Stack = new \GuzzleHttp\HandlerStack();
-        $Stack->setHandler(new \GuzzleHttp\Handler\CurlHandler());
+        $Stack = new HandlerStack();
+        $Stack->setHandler(new CurlHandler());
 
         /**
          * Здесь ставим ловушку, чтобы с помощью редиректов
          *   определить адрес сервера, который сможет отсылать сообщения
          */
-        $Stack->push(\GuzzleHttp\Middleware::mapResponse(function (\Psr\Http\Message\ResponseInterface $Response) {
+        $Stack->push(Middleware::mapResponse(function (ResponseInterface $Response) {
             $code = $Response->getStatusCode();
             if (($code >= 301 && $code <= 303) || $code == 307 || $code == 308) {
                 $location = $Response->getHeader('Location');
@@ -89,7 +104,7 @@ class Transport {
          * Ловушка для отлова хедера Set-RegistrationToken
          * Тоже нужен для отправки сообщений
          */
-        $Stack->push(\GuzzleHttp\Middleware::mapResponse(function (\Psr\Http\Message\ResponseInterface $Response) {
+        $Stack->push(Middleware::mapResponse(function (ResponseInterface $Response) {
             $header = $Response->getHeader("Set-RegistrationToken");
             if (count($header) > 0) {
                 $this->regToken = trim(explode(';', $header[0])[0]);
@@ -111,10 +126,15 @@ class Transport {
      *
      * @param string $endpointName
      * @param array $params
-     * @return \Psr\Http\Message\ResponseInterface
+     * @return ResponseInterface
      */
     private function request($endpointName, $params=[]) {
-        $Endpoint = static::$Endpoints[$endpointName];
+        if ($endpointName instanceof Endpoint){
+            $Endpoint = $endpointName;
+        }else{
+            $Endpoint = static::$Endpoints[$endpointName];
+        }
+
         if (array_key_exists("format", $params)) {
             $format = $params['format'];
             unset($params['format']);
@@ -155,7 +175,7 @@ class Transport {
      * @return array
      */
     private function requestJSON($endpointName, $params=[]) {
-        return json_decode($this->request($endpointName, $params)->getBody(), true);
+        return json_decode($this->request($endpointName, $params)->getBody());
     }
 
     /**
@@ -170,6 +190,7 @@ class Transport {
         $LoginForm = $Doc->getElementById('loginForm');
         $inputs = $LoginForm->getElementsByTagName('input');
         $formData = [];
+        /* @var $input \DOMElement */
         foreach ($inputs as $input) {
             $formData[$input->getAttribute('name')] = $input->getAttribute('value');
         }
@@ -208,8 +229,6 @@ class Transport {
      * @throws Exception
      */
     public function login($username, $password, $captchaData=null) {
-        $this->username = $username;
-
         $Doc = $this->postToLogin($username, $password, $captchaData);
         $XPath = new DOMXPath($Doc);
         $Inputs = $XPath->query("//input[@name='skypetoken']");
@@ -228,8 +247,6 @@ class Transport {
                     'skypetoken' => $this->skypeToken
                 ]
             ]);
-
-            $this->subscribeToResources();
             return true;
         }
 
@@ -317,16 +334,22 @@ class Transport {
 
     /**
      * Скачиваем список всех контактов и информацию о них для залогиненного юзера
+     * @param $username
      * @return null
      */
-    public function loadAllContacts() {
-        $Result = $this->requestJSON('contacts', [
-            'format' => [$this->username],
+    public function loadContacts($username) {
+        $response = $this->requestJSON('contacts', [
+            'format' => [$username],
         ]);
-        if (array_key_exists('contacts', $Result)) {
-            return $Result['contacts'];
-        }
-        return null;
+
+        return isset($response->contacts) ? $response->contacts : null;
+    }
+
+    public function loadProfile()
+    {
+        $response = $this->requestJSON('self_info');
+
+        return isset($response->username) ? $response : null;
     }
 
     /**
@@ -345,16 +368,16 @@ class Transport {
 
 
     public function getNewMessages($username){
-        $Response = $this->requestJSON('read_message', [
+        $response = $this->requestJSON('read_message', [
             'format' => [$this->cloud, "8:$username"]
         ]);
 
-        return isset($Response['eventMessages']) ? new Message($Response['eventMessages']) : null;
+        return isset($response->eventMessages) ? $response->eventMessages : null;
     }
 
-    private function subscribeToResources()
+    public function subscribeToResources()
     {
-        $response = $this->requestJSON('subscriptions', [
+        return $this->requestJSON('subscriptions', [
             'json' => [
                 'interestedResources' => [
                     '/v1/threads/ALL',
@@ -368,4 +391,37 @@ class Transport {
         ]);
     }
 
+    public function createStatusEndpoint()
+    {
+        $request = new Endpoint('PUT', 'https://client-s.gateway.messenger.live.com/v1/users/ME/endpoints/SELF/presenceDocs/messagingService');
+        $request->needRegToken();
+
+        $this->request($request, [
+            'json' => [
+                'id' => 'messagingService',
+                'type' => 'EndpointPresenceDoc',
+                'selfLink' => 'uri',
+                'privateInfo' =>  ["epname" => "skype"],
+                'publicInfo' =>  [
+                    "capabilities" => "video|audio",
+                    "type" => 1,
+                    "skypeNameVersion" => 'skype.com',
+                    "nodeInfo" => 'xx',
+                    "version" => '908/1.30.0.128//skype.com',
+                ],
+            ]
+        ]);
+    }
+
+    public function setStatus($status)
+    {
+        $request = new Endpoint('PUT', 'https://client-s.gateway.messenger.live.com/v1/users/ME/presenceDocs/messagingService');
+        $request->needRegToken();
+
+        $this->request($request, [
+            'json' => [
+                'status' => $status
+            ]
+        ]);
+    }
 }

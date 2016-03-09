@@ -1,5 +1,4 @@
 <?php
-
 /* @var $loader \Composer\Autoload\ClassLoader */
 $loader = require 'vendor/autoload.php';
 $loader->setUseIncludePath(__DIR__.'/skype_web_php/');
@@ -13,15 +12,20 @@ $password = '';
 
 $skype = new Skype();
 $skype->login($username, $password);
-$skype->sendTo("Hello: " . date('Y-m-d H:i:s'), $skype->getContact("vomoskal"));
-$skype->onMessage(function($message) use ($skype, $username){
-   var_dump($message);
+$skype->sendTo("Hello: ".date('Y-m-d H:i:s'), $skype->getContact("vomoskal")->id);
+$skype->onMessage(function ($messages, Skype $skype) {
 
-   if ($message && isset($message->content)){
-      if ($message->imdisplayname != $username){//message not from self
+    if (!is_array($messages)) return;
 
-         $skype->sendTo($message->content.".  Response: " . date('Y-m-d H:i:s'), $skype->getContact($message->from));
-      }
-   }
+    foreach ($messages as $message){
+        if (isset($message->resource->content)) {
+            if ($message->resource->imdisplayname != $skype->profile->username) {//message not from self
+
+                $message_from = substr($message->resource->from, strpos($message->resource->from, "8:") + 2);
+
+                $skype->sendTo($message->resource->content.".  Response: ".date('Y-m-d H:i:s'), $message_from);
+            }
+        }
+    }
 });
 //$skype->logout();
