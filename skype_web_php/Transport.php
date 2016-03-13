@@ -6,7 +6,6 @@ use Exception;
 use DOMDocument;
 use DOMXPath;
 use GuzzleHttp\Client;
-use GuzzleHttp\Cookie\FileCookieJar;
 use GuzzleHttp\Handler\CurlHandler;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Middleware;
@@ -15,7 +14,10 @@ use Psr\Http\Message\ResponseInterface;
 
 class Transport {
 
-    private $username;
+    /**
+     * @var Client
+     */
+    private $client;
     private $skypeToken;
     private $regToken;
     private $cloud;
@@ -48,35 +50,14 @@ class Transport {
                 'https://contacts.skype.com/contacts/v1/users/%s/contacts'))
                 ->needSkypeToken(),
 
-            'contact_info' => (new Endpoint('POST',
-                "https://api.skype.com/users/self/contacts/profiles"))
-                ->needSkypeToken(),
-
-            'self_info' => (new Endpoint('GET',
-                "https://api.skype.com/users/self/displayname"))
-                ->needSkypeToken(),
-
             'send_message' => (new Endpoint('POST',
                 'https://%sclient-s.gateway.messenger.live.com/v1/users/ME/conversations/%s/messages'))
                 ->needRegToken(),
 
-            'read_message' => (new Endpoint('POST',
-                'https://%sclient-s.gateway.messenger.live.com/v1/users/ME/endpoints/SELF/subscriptions/0/poll'))
-                ->needRegToken(),
-
-            'subscriptions' => (new Endpoint('POST',
-                'https://client-s.gateway.messenger.live.com/v1/users/ME/endpoints/SELF/subscriptions'))
-                ->needRegToken(),
-
-            'logout'       => (new Endpoint('Get',
+            'logout'  => (new Endpoint('Get',
                 'https://login.skype.com/logout?client_id=578134&redirect_uri=https%3A%2F%2Fweb.skype.com&intsrc=client-_-webapp-_-production-_-go-signin')),
         ];
     }
-
-    /**
-     * @var Client
-     */
-    private $Client;
 
     public function __construct() {
         static::init();
@@ -112,11 +93,11 @@ class Transport {
             return $Response;
         }));
 
-        $cookieJar = new FileCookieJar('cookie.txt', true);
+        //$cookieJar = new FileCookieJar('cookie.txt', true);
 
-        $this->Client = new Client([
+        $this->client = new Client([
             'handler' => $Stack,
-            'cookies' => $cookieJar
+            'cookies' => true
         ]);
 
     }
@@ -145,7 +126,7 @@ class Transport {
             'regToken'   => $this->regToken,
         ]);
 
-        $res = $this->Client->send($Request, $params);
+        $res = $this->client->send($Request, $params);
         return $res;
     }
 
@@ -261,7 +242,7 @@ class Transport {
                 }
                 preg_match_all("/skypeHipUrl = \"(.*)\"/", $script, $matches);
                 $url = $matches[1][0];
-                $rawjs = $this->Client->get($url)->getBody();
+                $rawjs = $this->client->get($url)->getBody();
                 $captchaData = $this->processCaptcha($rawjs);
                 // Если решение получено, пытаемся ещё раз залогиниться, но уже с решением капчи
                 if ($this->login($username, $password, $captchaData)) {
@@ -312,24 +293,32 @@ class Transport {
         ];
     }
 
-    /**
-     * Отправляем текстовое сообщение юзеру
-     * @param $username
-     * @param $message
-     * @return bool
-     */
-    public function send($username, $message) {
-        $ms = microtime();
+
+    public function send($username, $text, $edit_id = false) {
+        $milliseconds = round(microtime(true) * 1000);
+
+        $message_json = [
+            'content' => $text,
+            'messagetype' => 'RichText',
+            'contenttype' => 'text',
+            'clientmessageid' => "$milliseconds",
+        ];
+
+        if ($edit_id){
+            $message_json['skypeeditedid'] = $edit_id;
+            unset($message_json['clientmessageid']);
+        }
+
         $Response = $this->requestJSON('send_message', [
-            'json' => [
-                'content' => $message,
-                'messagetype' => 'RichText',
-                'contenttype' => 'text',
-                'clientmessageid' => "$ms",
-            ],
+            'json' => $message_json,
             'format' => [$this->cloud, "8:$username"]
         ]);
-        return array_key_exists("OriginalArrivalTime", $Response);
+
+        if (array_key_exists("OriginalArrivalTime", $Response)){//if successful sended
+            return $milliseconds;//message ID
+        }else{
+            return false;
+        }
     }
 
     /**
@@ -347,7 +336,10 @@ class Transport {
 
     public function loadProfile()
     {
-        $response = $this->requestJSON('self_info');
+        $request = new Endpoint('GET', 'https://api.skype.com/users/self/displayname');
+        $request->needSkypeToken();
+
+        $response = $this->requestJSON($request);
 
         return isset($response->username) ? $response : null;
     }
@@ -358,7 +350,10 @@ class Transport {
      * @return array
      */
     public function loadContact($username) {
-        $Result = $this->requestJSON('contact_info', [
+        $request = new Endpoint('POST', 'https://api.skype.com/users/self/contacts/profiles');
+        $request->needSkypeToken();
+
+        $Result = $this->requestJSON($request, [
             'form_params' => [
                 'contacts' => [$username]
             ]
@@ -368,7 +363,10 @@ class Transport {
 
 
     public function getNewMessages($username){
-        $response = $this->requestJSON('read_message', [
+        $request = new Endpoint('POST', 'https://%sclient-s.gateway.messenger.live.com/v1/users/ME/endpoints/SELF/subscriptions/0/poll');
+        $request->needRegToken();
+
+        $response = $this->requestJSON($request, [
             'format' => [$this->cloud, "8:$username"]
         ]);
 
@@ -377,7 +375,10 @@ class Transport {
 
     public function subscribeToResources()
     {
-        return $this->requestJSON('subscriptions', [
+        $request = new Endpoint('POST', 'https://client-s.gateway.messenger.live.com/v1/users/ME/endpoints/SELF/subscriptions');
+        $request->needRegToken();
+
+        return $this->requestJSON($request, [
             'json' => [
                 'interestedResources' => [
                     '/v1/threads/ALL',

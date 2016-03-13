@@ -12,7 +12,11 @@ $password = '';
 
 $skype = new Skype();
 $skype->login($username, $password);
-$skype->sendTo("Hello: ".date('Y-m-d H:i:s'), $skype->getContact("vomoskal")->id);
+
+$contact_id = $skype->getContact("vomoskal")->id;
+$message_id = $skype->sendMessage("Hello: ".date('Y-m-d H:i:s'), $contact_id);
+$skype->editMessage("Hello: ".date('Y-m-d H:i:s'), $contact_id, $message_id);
+
 $skype->onMessage(function ($messages, Skype $skype) {
 
     if (!is_array($messages)) return;
@@ -23,9 +27,14 @@ $skype->onMessage(function ($messages, Skype $skype) {
 
                 $message_from = substr($message->resource->from, strpos($message->resource->from, "8:") + 2);
 
-                $skype->sendTo($message->resource->content.".  Response: ".date('Y-m-d H:i:s'), $message_from);
+                $skype->sendMessage($message->resource->content.".  Response: ".date('Y-m-d H:i:s'), $message_from);
             }
         }
     }
 });
-//$skype->logout();
+
+// Catch Fatal Error
+register_shutdown_function(array($skype, 'logout'));
+// Catch Ctrl+C, kill and SIGTERM
+pcntl_signal(SIGTERM, array($skype, 'logout'));
+pcntl_signal(SIGINT, array($skype, 'logout'));
