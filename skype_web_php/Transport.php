@@ -73,7 +73,7 @@ class Transport {
             $code = $Response->getStatusCode();
             if (($code >= 301 && $code <= 303) || $code == 307 || $code == 308) {
                 $location = $Response->getHeader('Location');
-                preg_match('/https?://([^-]*-)client-s/', $location, $matches);
+                preg_match('/https?:\/\/([^-]*-)client-s/', $location[0], $matches);
                 if (array_key_exists(1, $matches)) {
                     $this->cloud = $matches[1];
                 }

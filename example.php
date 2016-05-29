@@ -6,19 +6,19 @@ $loader->register();
 
 use skype_web_php\Skype;
 
-$username = '';
-$password = '';
+$username = 'akomaru2';
+$password = 'asdbogch123';
 
 
 $skype = new Skype();
 $skype->login($username, $password);
 
-$contact_id = $skype->getContact("vomoskal")->id;
+$contact_id = $skype->getContact("bruyan777")->id;
 $message_id = $skype->sendMessage("Hello: ".date('Y-m-d H:i:s'), $contact_id);
-$skype->editMessage("Hello: ".date('Y-m-d H:i:s'), $contact_id, $message_id);
+//$skype->editMessage("Hello: ".date('Y-m-d H:i:s'), $contact_id, $message_id);
 
 $skype->onMessage(function ($messages, Skype $skype) {
-
+	echo '123';
     if (!is_array($messages)) return;
 
     foreach ($messages as $message){
